@@ -17,6 +17,27 @@ import sys
 # Third-party libraries
 import numpy as np
 
+#### Some usefull features
+
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
+    # Print New Line on Complete
+    if iteration == total: 
+        print("\n")
 
 #### Define the quadratic and cross-entropy cost functions
 
@@ -28,6 +49,14 @@ class QuadraticCost(object):
         ``y``.
         """
         return 0.5*np.linalg.norm(a-y)**2
+    
+    @staticmethod
+    def batch_fn(a_matrix, y_matrix):
+        """Return the mean cost associated with an output matrix ``a_matrix`` 
+        and desired output matrix ``y_matrix``.
+        """
+        return 1/(2*a_matrix.shape[1])*(np.linalg.norm(a_matrix-y_matrix))**2
+        
 
     @staticmethod
     def delta(z, a, y):
@@ -47,6 +76,13 @@ class CrossEntropyCost(object):
         to the correct value (0.0).
         """
         return np.sum(np.nan_to_num(-y*np.log(a)-(1-y)*np.log(1-a)))
+    
+    @staticmethod
+    def batch_fn(a_matrix, y_matrix):
+        """Return the mean cost associated with an output matrix ``a_matrix`` 
+        and desired output matrix ``y_matrix``.
+        """
+        return 1/(a_matrix.shape[1])*np.sum(np.nan_to_num(-y_matrix*np.log(a_matrix)-(1-y_matrix)*np.log(1-a_matrix)))
 
     @staticmethod
     def delta(z, a, y):
@@ -121,13 +157,13 @@ class Network(object):
         """
         len_datapt = len(mini_batch[0][0])
         len_mini_batch = len(mini_batch)
-        mb_matrix = np.zeros((len_datapt, len_mini_batch))
+        a_matrix = np.zeros((len_datapt, len_mini_batch))
         for index, item in enumerate(mini_batch):
-            mb_matrix[:,index] = item[0][:,0]
+            a_matrix[:,index] = item[0][:,0]
         for b, w in zip(self.biases, self.weights):
             b = np.tile(b, len_mini_batch)
-            mb_matrix = sigmoid(np.dot(w, mb_matrix)+b)
-        return mb_matrix
+            a_matrix = sigmoid(np.dot(w, a_matrix)+b)
+        return a_matrix
 
     def SGD(self, training_data, epochs, mini_batch_size, eta,
             lmbda = 0.0,
@@ -163,10 +199,13 @@ class Network(object):
             mini_batches = [
                 training_data[k:k+mini_batch_size]
                 for k in range(0, n, mini_batch_size)]
-            for mini_batch in mini_batches:
+            for index, mini_batch in enumerate(mini_batches):
                 self.update_mini_batch(
                     mini_batch, eta, lmbda, len(training_data))
-            print("Epoch {} training complete".format(j))
+                printProgressBar(iteration=index, total=len(mini_batches)-1, \
+                                 prefix="Epoch {}".format(j+1), decimals=1, \
+                                 suffix="Complete", length=50)
+            print("Epoch {} training complete".format(j+1))
             if monitor_training_cost:
                 cost = self.total_cost(training_data, lmbda)
                 training_cost.append(cost)
@@ -271,9 +310,10 @@ class Network(object):
         delta_avg = np.reshape(np. average(delta_matrix, axis=1), (delta_matrix.shape[0], 1))
         
         nabla_b[-1] = delta_avg
-        nabla_w_matrices = [np.dot(delta_temp, a_temp.transpose()) for delta_temp, a_temp in \
-                            zip([np.reshape(delta_matrix[:,i], (delta_matrix.shape[0], 1)) for i in range(len_mini_batch)],\
-                                 [np.reshape(activations[-2][:,i], (activations[-2].shape[0], 1)) for i in range(len_mini_batch)])]
+        nabla_w_matrices = []
+        for i in range(len(mini_batch)):
+            nabla_w_matrices.append(np.dot(np.reshape(delta_matrix[:,i], (delta_matrix.shape[0], 1)),\
+                                           np.reshape(activations[-2][:,i], (activations[-2].shape[0],1)).transpose()))
         nabla_w[-1] = sum(nabla_w_matrices)/len_mini_batch
         # backpropagation
         for l in range(2, self.num_layers):
@@ -282,14 +322,15 @@ class Network(object):
             delta_matrix = np.dot(self.weights[-l+1].transpose(), delta_matrix) * sp
             delta_avg = np.reshape(np. average(delta_matrix, axis=1), (delta_matrix.shape[0], 1))
             nabla_b[-l] = delta_avg
-            nabla_w_matrices = [np.dot(delta_temp, a_temp.transpose()) for delta_temp, a_temp in \
-                            zip([np.reshape(delta_matrix[:,i], (delta_matrix.shape[0], 1)) for i in range(len_mini_batch)],\
-                                 [np.reshape(activations[-l-1][:,i], (activations[-l-1].shape[0], 1)) for i in range(len_mini_batch)])]
+            nabla_w_matrices = []
+            for i in range(len(mini_batch)):
+                nabla_w_matrices.append(np.dot(np.reshape(delta_matrix[:,i], (delta_matrix.shape[0], 1)),\
+                                        np.reshape(activations[-l-1][:,i], (activations[-l-1].shape[0],1)).transpose()))
             nabla_w[-l] = sum(nabla_w_matrices)/len_mini_batch
         return (nabla_b, nabla_w)
         
 
-    def accuracy(self, data, convert=False):
+    def accuracy(self, mini_batch, convert=False):
         """Return the number of inputs in ``data`` for which the neural
         network outputs the correct result. The neural network's
         output is assumed to be the index of whichever neuron in the
@@ -311,26 +352,39 @@ class Network(object):
         mnist_loader.load_data_wrapper.
         """
         if convert:
-            results = [(np.argmax(self.feedforward(x)), np.argmax(y))
-                       for (x, y) in data]
+            len_mini_batch = len(mini_batch)
+            len_y = len(mini_batch[0][1])
+            y_matrix = np.zeros((len_y, len_mini_batch))
+            for index, item in enumerate(mini_batch):
+                y_matrix[:,index] = item[1][:,0]
+            results = zip(np.argmax(self.batch_ff(mini_batch), axis=0), np.argmax(y_matrix, axis=0))
         else:
-            results = [(np.argmax(self.feedforward(x)), y)
-                        for (x, y) in data]
+            y_list = [y for x,y in mini_batch]
+            results = zip(np.argmax(self.batch_ff(mini_batch), axis=0), y_list)
         return sum(int(x == y) for (x, y) in results)
 
-    def total_cost(self, data, lmbda, convert=False):
-        """Return the total cost for the data set ``data``.  The flag
+    
+    def total_cost(self, mini_batch, lmbda, convert=False):
+        """Return the total cost for the data set ``mini_batch``.  The flag
         ``convert`` should be set to False if the data set is the
         training data (the usual case), and to True if the data set is
         the validation or test data.  See comments on the similar (but
         reversed) convention for the ``accuracy`` method, above.
         """
-        cost = 0.0
-        for x, y in data:
-            a = self.feedforward(x)
-            if convert: y = vectorized_result(y)
-            cost += self.cost.fn(a, y)/len(data)
-        cost += 0.5*(lmbda/len(data))*sum(
+        len_mini_batch = len(mini_batch)
+        if convert:
+            len_y = len(vectorized_result(mini_batch[0][1]))
+        else:
+            len_y = len(mini_batch[0][1])
+        a_matrix = self.batch_ff(mini_batch)
+        y_matrix = np.zeros((len_y, len_mini_batch))
+        for index, item in enumerate(mini_batch):
+            if convert:
+                y_matrix[:,index] = vectorized_result(item[1])[:,0]
+            else:
+                y_matrix[:,index] = item[1][:,0]
+        cost = self.cost.batch_fn(a_matrix, y_matrix)
+        cost += 0.5*(lmbda/len_mini_batch)*sum(
             np.linalg.norm(w)**2 for w in self.weights)
         return cost
 
@@ -343,7 +397,24 @@ class Network(object):
         f = open(filename, "w")
         json.dump(data, f)
         f.close()
-
+        
+    def save_weights(self, filename):
+        """Save the neural network weights to the file ``filename``."""
+        data = {"sizes": self.sizes,
+                "weights": [w.tolist() for w in self.weights],
+                "biases": [b.tolist() for b in self.biases]}
+        f = open(filename, "w")
+        json.dump(data, f)
+        f.close()
+        
+    def load_weights(self, filename):
+        """Load the neural network weights from the file ``filename``."""
+        f = open(filename, "r")
+        data = json.load(f)
+        f.close()
+        self.weights = [np.array(w) for w in data["weights"]]
+        self.biases = [np.array(b) for b in data["biases"]]
+        
 #### Loading a Network
 def load(filename):
     """Load a neural network from the file ``filename``.  Returns an
