@@ -17,6 +17,27 @@ import sys
 # Third-party libraries
 import numpy as np
 
+#### Some usefull features
+
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
+    # Print New Line on Complete
+    if iteration == total: 
+        print("\n")
 
 #### Define the quadratic and cross-entropy cost functions
 
@@ -178,10 +199,13 @@ class Network(object):
             mini_batches = [
                 training_data[k:k+mini_batch_size]
                 for k in range(0, n, mini_batch_size)]
-            for mini_batch in mini_batches:
+            for index, mini_batch in enumerate(mini_batches):
                 self.update_mini_batch(
                     mini_batch, eta, lmbda, len(training_data))
-            print("Epoch {} training complete".format(j))
+                printProgressBar(iteration=index, total=len(mini_batches)-1, \
+                                 prefix="Epoch {}".format(j+1), decimals=1, \
+                                 suffix="Complete", length=50)
+            print("Epoch {} training complete".format(j+1))
             if monitor_training_cost:
                 cost = self.total_cost(training_data, lmbda)
                 training_cost.append(cost)
@@ -339,23 +363,14 @@ class Network(object):
             results = zip(np.argmax(self.batch_ff(mini_batch), axis=0), y_list)
         return sum(int(x == y) for (x, y) in results)
 
-#    def total_cost(self, data, lmbda, convert=False):
-#        """Return the total cost for the data set ``data``.  The flag
-#        ``convert`` should be set to False if the data set is the
-#        training data (the usual case), and to True if the data set is
-#        the validation or test data.  See comments on the similar (but
-#        reversed) convention for the ``accuracy`` method, above.
-#        """
-#        cost = 0.0
-#        for x, y in data:
-#            a = self.feedforward(x)
-#            if convert: y = vectorized_result(y)
-#            cost += self.cost.fn(a, y)/len(data)
-#        cost += 0.5*(lmbda/len(data))*sum(
-#            np.linalg.norm(w)**2 for w in self.weights)
-#        return cost
     
     def total_cost(self, mini_batch, lmbda, convert=False):
+        """Return the total cost for the data set ``mini_batch``.  The flag
+        ``convert`` should be set to False if the data set is the
+        training data (the usual case), and to True if the data set is
+        the validation or test data.  See comments on the similar (but
+        reversed) convention for the ``accuracy`` method, above.
+        """
         len_mini_batch = len(mini_batch)
         if convert:
             len_y = len(vectorized_result(mini_batch[0][1]))
@@ -393,7 +408,7 @@ class Network(object):
         f.close()
         
     def load_weights(self, filename):
-        """Save the neural network weights from the file ``filename``."""
+        """Load the neural network weights from the file ``filename``."""
         f = open(filename, "r")
         data = json.load(f)
         f.close()
