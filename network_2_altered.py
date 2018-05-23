@@ -38,6 +38,34 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     # Print New Line on Complete
     if iteration == total: 
         print("\n")
+        
+#### Miscellaneous functions
+
+def vectorized_result(j):
+    """Return a 10-dimensional unit vector with a 1.0 in the j'th position
+    and zeroes elsewhere.  This is used to convert a digit (0...9)
+    into a corresponding desired output from the neural network.
+    """
+    e = np.zeros((10, 1))
+    e[j] = 1.0
+    return e
+
+def sigmoid(z):
+    """The sigmoid function."""
+    return 1.0/(1.0+np.exp(-z))
+
+def sigmoid_prime(z):
+    """Derivative of the sigmoid function."""
+    return sigmoid(z)*(1-sigmoid(z))
+
+def relu(z):
+    """The relu function"""
+    return np.maximum(z,0,z)
+
+def relu_prime(z):
+    """Derivative of the relu function"""
+    return (z>0)*1.
+
 
 #### Define the quadratic and cross-entropy cost functions
 
@@ -98,7 +126,7 @@ class CrossEntropyCost(object):
 #### Main Network class
 class Network(object):
 
-    def __init__(self, sizes, cost=CrossEntropyCost):
+    def __init__(self, sizes, cost=CrossEntropyCost, activation_function="sigmoid"):
         """The list ``sizes`` contains the number of neurons in the respective
         layers of the network.  For example, if the list was [2, 3, 1]
         then it would be a three-layer network, with the first layer
@@ -112,6 +140,12 @@ class Network(object):
         self.sizes = sizes
         self.default_weight_initializer()
         self.cost=cost
+        if activation_function == "sigmoid":
+            self.activation_function = sigmoid
+            self.activation_function_prime = sigmoid_prime
+        elif activation_function == "relu":
+            self.activation_function = relu
+            self.activation_function_prime = relu_prime
 
     def default_weight_initializer(self):
         """Initialize each weight using a Gaussian distribution with mean 0
@@ -148,7 +182,7 @@ class Network(object):
     def feedforward(self, a):
         """Return the output of the network if ``a`` is input."""
         for b, w in zip(self.biases, self.weights):
-            a = sigmoid(np.dot(w, a)+b)
+            a = self.activation_function(np.dot(w, a)+b)
         return a
     
     def batch_ff(self, mini_batch):
@@ -162,7 +196,7 @@ class Network(object):
             a_matrix[:,index] = item[0][:,0]
         for b, w in zip(self.biases, self.weights):
             b = np.tile(b, len_mini_batch)
-            a_matrix = sigmoid(np.dot(w, a_matrix)+b)
+            a_matrix = self.activation_function(np.dot(w, a_matrix)+b)
         return a_matrix
 
     def SGD(self, training_data, epochs, mini_batch_size, eta,
@@ -258,7 +292,7 @@ class Network(object):
         for b, w in zip(self.biases, self.weights):
             z = np.dot(w, activation)+b
             zs.append(z)
-            activation = sigmoid(z)
+            activation = self.activation_function(z)
             activations.append(activation)
         # backward pass
         delta = (self.cost).delta(zs[-1], activations[-1], y)
@@ -272,7 +306,7 @@ class Network(object):
         # that Python can use negative indices in lists.
         for l in range(2, self.num_layers):
             z = zs[-l]
-            sp = sigmoid_prime(z)
+            sp = self.activation_function_prime(z)
             delta = np.dot(self.weights[-l+1].transpose(), delta) * sp
             nabla_b[-l] = delta
             nabla_w[-l] = np.dot(delta, activations[-l-1].transpose())
@@ -318,7 +352,7 @@ class Network(object):
         # backpropagation
         for l in range(2, self.num_layers):
             z = zs[-l]
-            sp = sigmoid_prime(z)
+            sp = self.activation_function_prime(z)
             delta_matrix = np.dot(self.weights[-l+1].transpose(), delta_matrix) * sp
             delta_avg = np.reshape(np. average(delta_matrix, axis=1), (delta_matrix.shape[0], 1))
             nabla_b[-l] = delta_avg
@@ -428,26 +462,6 @@ def load(filename):
     net.weights = [np.array(w) for w in data["weights"]]
     net.biases = [np.array(b) for b in data["biases"]]
     return net
-
-#### Miscellaneous functions
-def vectorized_result(j):
-    """Return a 10-dimensional unit vector with a 1.0 in the j'th position
-    and zeroes elsewhere.  This is used to convert a digit (0...9)
-    into a corresponding desired output from the neural network.
-    """
-    e = np.zeros((10, 1))
-    e[j] = 1.0
-    return e
-
-def sigmoid(z):
-    """The sigmoid function."""
-    return 1.0/(1.0+np.exp(-z))
-
-def sigmoid_prime(z):
-    """Derivative of the sigmoid function."""
-    return sigmoid(z)*(1-sigmoid(z))
-
-
 
 
 
