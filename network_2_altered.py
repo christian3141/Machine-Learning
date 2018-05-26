@@ -66,6 +66,13 @@ def relu_prime(z):
     """Derivative of the relu function"""
     return (z>0)*1.
 
+def choose_prime(function):
+    """Returns the according derivative of function"""
+    if function == sigmoid:
+        return sigmoid_prime
+    elif function == relu:
+        return relu_prime
+
 
 #### Define the quadratic and cross-entropy cost functions
 
@@ -87,9 +94,10 @@ class QuadraticCost(object):
         
 
     @staticmethod
-    def delta(z, a, y):
+    def delta(z, a, y, activation):
         """Return the error delta from the output layer (assuming sigmoid activation)."""
-        return (a-y) * sigmoid_prime(z)
+        activation_prime = choose_prime(activation)
+        return (a-y) * activation_prime(z)
 
 
 class CrossEntropyCost(object):
@@ -113,13 +121,14 @@ class CrossEntropyCost(object):
         return 1/(a_matrix.shape[1])*np.sum(np.nan_to_num(-y_matrix*np.log(a_matrix)-(1-y_matrix)*np.log(1-a_matrix)))
 
     @staticmethod
-    def delta(z, a, y):
+    def delta(z, a, y, activation):
         """Return the error delta from the output layer (assuming sigmoid activation).
         Note that the parameter ``z`` is not used by the method.  It is included in
         the method's parameters in order to make the interface
         consistent with the delta method for other cost classes.
         """
-        return (a-y)
+        activation_prime = choose_prime(activation)
+        return ((a-y)/((1-a)*a)) * activation_prime(z)
 
 
 
@@ -205,7 +214,7 @@ class Network(object):
         return a_matrix
 
     def SGD(self, training_data, epochs, mini_batch_size, eta,
-            lmbda = 0.0,
+            lmbda = 0.0, gamma=0.0,
             evaluation_data=None,
             monitor_evaluation_cost=False,
             monitor_evaluation_accuracy=False,
@@ -239,8 +248,10 @@ class Network(object):
                 training_data[k:k+mini_batch_size]
                 for k in range(0, n, mini_batch_size)]
             for index, mini_batch in enumerate(mini_batches):
-                self.update_mini_batch(
-                    mini_batch, eta, lmbda, len(training_data))
+                delta_b_p = [np.zeros_like(bias) for bias in self.biases]
+                delta_w_p = [np.zeros_like(weight) for weight in self.weights]
+                delta_b_p, delta_w_p = self.update_mini_batch(
+                    mini_batch, eta, lmbda, len(training_data), gamma, delta_b_p, delta_w_p)
                 printProgressBar(iteration=index, total=len(mini_batches)-1, \
                                  prefix="Epoch {}".format(j+1), decimals=1, \
                                  suffix="Complete", length=50)
@@ -267,7 +278,7 @@ class Network(object):
         return evaluation_cost, evaluation_accuracy, \
             training_cost, training_accuracy
 
-    def update_mini_batch(self, mini_batch, eta, lmbda, n):
+    def update_mini_batch(self, mini_batch, eta, lmbda, n, gamma, delta_b_p, delta_w_p):
         """Update the network's weights and biases by applying gradient
         descent using backpropagation to a single mini batch.  The
         ``mini_batch`` is a list of tuples ``(x, y)``, ``eta`` is the
@@ -278,10 +289,13 @@ class Network(object):
         nabla_w = [np.zeros(w.shape) for w in self.weights]
 
         nabla_b, nabla_w = self.batch_backprop(mini_batch)
-        self.weights = [(1-eta*(lmbda/n))*w-(eta)*nw
-                        for w, nw in zip(self.weights, nabla_w)]
-        self.biases = [b-(eta)*nb
-                       for b, nb in zip(self.biases, nabla_b)]
+        delta_w = [-eta*(lmbda/n)*w - (eta)*nw - gamma*dwp
+                            for w, nw, dwp in zip(self.weights, nabla_w, delta_w_p)]
+        delta_b = [-(eta)*nb - gamma*dbp for nb, dbp in zip(nabla_b, delta_b_p)]
+        self.weights = [w + dw for w, dw in zip(self.weights, delta_w)]
+        self.biases = [b + db
+                       for b, db in zip(self.biases, delta_b)]
+        return (delta_b, delta_w)
 
     def backprop(self, x, y):
         """Return a tuple ``(nabla_b, nabla_w)`` representing the
@@ -300,7 +314,7 @@ class Network(object):
             activation = self.activ[index](z)
             activations.append(activation)
         # backward pass
-        delta = (self.cost).delta(zs[-1], activations[-1], y)
+        delta = (self.cost).delta(zs[-1], activations[-1], y, self.activ[-1])
         nabla_b[-1] = delta
         nabla_w[-1] = np.dot(delta, activations[-2].transpose())
         # Note that the variable l in the loop below is used a little
@@ -345,7 +359,7 @@ class Network(object):
             activation = self.activ[index](z)
             activations.append(activation)
         # backward pass
-        delta_matrix = (self.cost).delta(zs[-1], activations[-1], y_matrix)
+        delta_matrix = (self.cost).delta(zs[-1], activations[-1], y_matrix, self.activ[-1])
         delta_avg = np.reshape(np. average(delta_matrix, axis=1), (delta_matrix.shape[0], 1))
         
         nabla_b[-1] = delta_avg
