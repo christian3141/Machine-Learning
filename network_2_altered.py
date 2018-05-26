@@ -88,7 +88,7 @@ class QuadraticCost(object):
 
     @staticmethod
     def delta(z, a, y):
-        """Return the error delta from the output layer."""
+        """Return the error delta from the output layer (assuming sigmoid activation)."""
         return (a-y) * sigmoid_prime(z)
 
 
@@ -114,8 +114,8 @@ class CrossEntropyCost(object):
 
     @staticmethod
     def delta(z, a, y):
-        """Return the error delta from the output layer.  Note that the
-        parameter ``z`` is not used by the method.  It is included in
+        """Return the error delta from the output layer (assuming sigmoid activation).
+        Note that the parameter ``z`` is not used by the method.  It is included in
         the method's parameters in order to make the interface
         consistent with the delta method for other cost classes.
         """
@@ -126,7 +126,7 @@ class CrossEntropyCost(object):
 #### Main Network class
 class Network(object):
 
-    def __init__(self, sizes, cost=CrossEntropyCost, activation_function="sigmoid"):
+    def __init__(self, sizes, activ, cost=CrossEntropyCost):
         """The list ``sizes`` contains the number of neurons in the respective
         layers of the network.  For example, if the list was [2, 3, 1]
         then it would be a three-layer network, with the first layer
@@ -135,17 +135,22 @@ class Network(object):
         are initialized randomly, using
         ``self.default_weight_initializer`` (see docstring for that
         method).
+        The list "activ" contains the names of the activation functions for the
+        respective layers of the network.
         """
         self.num_layers = len(sizes)
         self.sizes = sizes
         self.default_weight_initializer()
         self.cost=cost
-        if activation_function == "sigmoid":
-            self.activation_function = sigmoid
-            self.activation_function_prime = sigmoid_prime
-        elif activation_function == "relu":
-            self.activation_function = relu
-            self.activation_function_prime = relu_prime
+        self.activ = []
+        self.activ_prime = []
+        for name in activ:
+            if name == "sigmoid":
+                self.activ.append(sigmoid)
+                self.activ_prime.append(sigmoid_prime)
+            elif name == "relu":
+                self.activ.append(relu)
+                self.activ_prime.append(relu_prime)
 
     def default_weight_initializer(self):
         """Initialize each weight using a Gaussian distribution with mean 0
@@ -181,8 +186,8 @@ class Network(object):
 
     def feedforward(self, a):
         """Return the output of the network if ``a`` is input."""
-        for b, w in zip(self.biases, self.weights):
-            a = self.activation_function(np.dot(w, a)+b)
+        for index, (b, w) in enumerate(zip(self.biases, self.weights)):
+            a = self.activ[index](np.dot(w, a)+b)
         return a
     
     def batch_ff(self, mini_batch):
@@ -194,9 +199,9 @@ class Network(object):
         a_matrix = np.zeros((len_datapt, len_mini_batch))
         for index, item in enumerate(mini_batch):
             a_matrix[:,index] = item[0][:,0]
-        for b, w in zip(self.biases, self.weights):
+        for index, (b, w) in enumerate(zip(self.biases, self.weights)):
             b = np.tile(b, len_mini_batch)
-            a_matrix = self.activation_function(np.dot(w, a_matrix)+b)
+            a_matrix = self.activ[index](np.dot(w, a_matrix)+b)
         return a_matrix
 
     def SGD(self, training_data, epochs, mini_batch_size, eta,
@@ -289,10 +294,10 @@ class Network(object):
         activation = x
         activations = [x] # list to store all the activations, layer by layer
         zs = [] # list to store all the z vectors, layer by layer
-        for b, w in zip(self.biases, self.weights):
+        for index, (b, w) in enumerate(zip(self.biases, self.weights)):
             z = np.dot(w, activation)+b
             zs.append(z)
-            activation = self.activation_function(z)
+            activation = self.activ[index](z)
             activations.append(activation)
         # backward pass
         delta = (self.cost).delta(zs[-1], activations[-1], y)
@@ -306,7 +311,7 @@ class Network(object):
         # that Python can use negative indices in lists.
         for l in range(2, self.num_layers):
             z = zs[-l]
-            sp = self.activation_function_prime(z)
+            sp = self.activ_prime[-l](z)
             delta = np.dot(self.weights[-l+1].transpose(), delta) * sp
             nabla_b[-l] = delta
             nabla_w[-l] = np.dot(delta, activations[-l-1].transpose())
@@ -333,11 +338,11 @@ class Network(object):
         activation = x_matrix
         activations = [x_matrix] # list to store all the activations, layer by layer
         zs = [] # list to store all the z vectors, layer by layer
-        for b, w in zip(self.biases, self.weights):
+        for index, (b, w) in enumerate(zip(self.biases, self.weights)):
             b = np.tile(b, len_mini_batch)
             z = np.dot(w, activation)+b
             zs.append(z)
-            activation = sigmoid(z)
+            activation = self.activ[index](z)
             activations.append(activation)
         # backward pass
         delta_matrix = (self.cost).delta(zs[-1], activations[-1], y_matrix)
@@ -352,7 +357,7 @@ class Network(object):
         # backpropagation
         for l in range(2, self.num_layers):
             z = zs[-l]
-            sp = self.activation_function_prime(z)
+            sp = self.activ_prime[-l](z)
             delta_matrix = np.dot(self.weights[-l+1].transpose(), delta_matrix) * sp
             delta_avg = np.reshape(np. average(delta_matrix, axis=1), (delta_matrix.shape[0], 1))
             nabla_b[-l] = delta_avg
